@@ -1,0 +1,452 @@
+
+module spng;
+import libc;
+
+
+const VERSION_MAJOR = 0;
+const VERSION_MINOR = 7;
+const VERSION_PATCH = 4;
+
+
+enum Errno : const CInt {
+  IO_ERROR = -2,
+  IO_EOF = -1,
+  OK = 0,
+  EINVAL,
+  EMEM,
+  EOVERFLOW,
+  ESIGNATURE,
+  EWIDTH,
+  EHEIGHT,
+  EUSER_WIDTH,
+  EUSER_HEIGHT,
+  EBIT_DEPTH,
+  ECOLOR_TYPE,
+  ECOMPRESSION_METHOD,
+  EFILTER_METHOD,
+  EINTERLACE_METHOD,
+  EIHDR_SIZE,
+  ENOIHDR,
+  ECHUNK_POS,
+  ECHUNK_SIZE,
+  ECHUNK_CRC,
+  ECHUNK_TYPE,
+  ECHUNK_UNKNOWN_CRITICAL,
+  EDUP_PLTE,
+  EDUP_CHRM,
+  EDUP_GAMA,
+  EDUP_ICCP,
+  EDUP_SBIT,
+  EDUP_SRGB,
+  EDUP_BKGD,
+  EDUP_HIST,
+  EDUP_TRNS,
+  EDUP_PHYS,
+  EDUP_TIME,
+  EDUP_OFFS,
+  EDUP_EXIF,
+  ECHRM,
+  EPLTE_IDX,
+  ETRNS_COLOR_TYPE,
+  ETRNS_NO_PLTE,
+  EGAMA,
+  EICCP_NAME,
+  EICCP_COMPRESSION_METHOD,
+  ESBIT,
+  ESRGB,
+  ETEXT,
+  ETEXT_KEYWORD,
+  EZTXT,
+  EZTXT_COMPRESSION_METHOD,
+  EITXT,
+  EITXT_COMPRESSION_FLAG,
+  EITXT_COMPRESSION_METHOD,
+  EITXT_LANG_TAG,
+  EITXT_TRANSLATED_KEY,
+  EBKGD_NO_PLTE,
+  EBKGD_PLTE_IDX,
+  EHIST_NO_PLTE,
+  EPHYS,
+  ESPLT_NAME,
+  ESPLT_DUP_NAME,
+  ESPLT_DEPTH,
+  ETIME,
+  EOFFS,
+  EEXIF,
+  EIDAT_TOO_SHORT,
+  EIDAT_STREAM,
+  EZLIB,
+  EFILTER,
+  EBUFSIZ,
+  EIO,
+  EOF,
+  EBUF_SET,
+  EBADSTATE,
+  EFMT,
+  EFLAGS,
+  ECHUNKAVAIL,
+  ENCODE_ONLY,
+  EOI,
+  ENOPLTE,
+  ECHUNK_LIMITS,
+  EZLIB_INIT,
+  ECHUNK_STDLEN,
+  EINTERNAL,
+  ECTXTYPE,
+  ENOSRC,
+  ENODST,
+  EOPSTATE,
+  ENOTFINAL,
+}
+
+enum TextType : const CInt {
+  TEXT = 1,
+  ZTXT = 2,
+  ITXT = 3,
+}
+
+enum ColorType : const CInt {
+  GRAYSCALE = 0,
+  TRUECOLOR = 2,
+  INDEXED = 3,
+  GRAYSCALE_ALPHA = 4,
+  TRUECOLOR_ALPHA = 6,
+}
+
+enum Filter : const CInt {
+  NONE = 0,
+  SUB = 1,
+  UP = 2,
+  AVERAGE = 3,
+  PAETH = 4,
+}
+
+enum FilterChoice : const CInt {
+  DISABLE_FILTERING = 0,
+  FILTER_CHOICE_NONE = 8,
+  FILTER_CHOICE_SUB = 16,
+  FILTER_CHOICE_UP = 32,
+  FILTER_CHOICE_AVG = 64,
+  FILTER_CHOICE_PAETH = 128,
+  FILTER_CHOICE_ALL = (8|16|32|64|128)
+}
+
+enum InterlaceMethod : const CInt {
+  NONE = 0,
+  ADAM7 = 1,
+}
+
+// Channels are in Byte-order
+enum Format : const CInt {
+  RGBA8 = 1,
+  RGBA16 = 2,
+  RGB8 = 4,
+
+  // Partially implemented
+  GA8 = 16,
+  GA16 = 32,
+  G8 = 64,
+
+  // No conversion or scaling
+  PNG = 256, // Ignore checksum in DEFLATE streams
+  RAW = 512, // Create an encoder context
+}
+
+enum CTXFlags : const CInt {
+  IGNORE_ADLER32 = 1,
+  ENCODER = 2,
+}
+
+enum DecodeFlags : const CInt {
+//  USE_TRNS = 1, // Deprecated
+//  USE_GAMA = 2, // Deprecated
+  USE_SBIT = 8, // Undocumented
+
+  TRNS  = 1, // Apply transparency
+  GAMMA = 2, // Apply Gamma correction
+  PROGRESSIVE = 256, // Initialize for progressive reads
+}
+
+enum CRCAction : const CInt {
+  // Default for critical chunks
+  ERROR = 0,
+
+  // Discard chunk, invalid for critical chunks.
+  //   Since v0.6.2: default for ancillary chunks
+  DISCARD = 1,
+
+  // Ignore and don't calculate checksum
+  //  Since v0.6.2: also ignores checksums in DEFLATE streams
+  USE = 2,
+}
+
+enum EncodeFlags : const CInt {
+  PROGRESSIVE = 1, // Initialize for progressive writes
+  FINALIZE = 2, // Finalize PNG after encoding image
+}
+
+struct Ihdr {
+  uint width, height;
+  char bitDepth;
+  char colorType;
+  char compressionMethod;
+  char filterMethod;
+  char interlaceMethod;
+}
+
+struct PlteEntry {
+  char red, green, blue;
+  char alpha; // Reserved for internal use
+}
+
+struct Plte {
+  uint nEntries;
+  PlteEntry[256] entries;
+}
+
+struct Trns {
+  ushort gray;
+
+  ushort red, green, blue;
+
+  uint nType3Entries;
+  char[256] type3Alpha;
+}
+
+struct ChrmInt {
+  uint whitePointX, whitePointY;
+  uint redX, redY;
+  uint greenX, greenY;
+  uint blueX, blueY;
+}
+
+struct Chrm {
+  double whitePointX, whitePointY;
+  double redX, redY;
+  double greenX, greenY;
+  double blueX, blueY;
+}
+
+struct Iccp {
+  char[80] profileName;
+  usz profileLen;
+  char* profile;
+}
+
+struct Sbit {
+  char grayscaleBits;
+  char redBits, greenBits, blueBits;
+  char alphaBits;
+}
+
+struct Text {
+  char[80] keyword;
+  int type;
+
+  usz length;
+  char* text;
+
+  char compressionFlag;    // iTXt only
+  char compressionMethod;  // iTXt, zTXt only
+  char* languageTag;       // iTXt only
+  char* translatedKeyword; // iTXt only
+}
+
+struct Bkgd {
+  ushort gray; // Only for gray/gray alpha
+  ushort red, green, blue;
+  ushort plteIndex; // Only for indexed color
+}
+
+struct Hist {
+  ushort[256] frequency;
+}
+
+struct Phys {
+  uint ppuX, ppuY;
+  char unitSpecifier;
+}
+
+struct SpltEntry {
+  ushort red, green, blue;
+  ushort alpha;
+  ushort frequency;
+}
+
+struct Splt {
+  char[80] name;
+  char sampleDepth;
+  uint nEntries;
+  SpltEntry* entries;
+}
+
+struct Time {
+  ushort year;
+  char month, day;
+  char hour, minute, second;
+}
+
+struct Offs {
+  int x, y;
+  char unitSpecifier;
+}
+
+struct Exif {
+  usz length;
+  char* data;
+}
+
+struct Chunk {
+  usz offset;
+  uint length;
+  char[4] type;
+  uint crc;
+}
+
+enum Location : const CInt {
+  IHDR = 1,
+  PLTE = 2,
+  IDAT = 8,
+}
+
+struct UnknownChunk {
+  char[4] type;
+  usz length;
+  void* data;
+  Location location;
+}
+
+enum Option : const CInt {
+  KEEP_UNKNOWN_CHUNKS = 1,
+
+  IMG_COMPRESSION_LEVEL,
+  IMG_WINDOW_BITS,
+  IMG_MEM_LEVEL,
+  IMG_COMPRESSION_STRATEGY,
+
+  TEXT_COMPRESSION_LEVEL,
+  TEXT_WINDOW_BITS,
+  TEXT_MEM_LEVEL,
+  TEXT_COMPRESSION_STRATEGY,
+
+  FILTER_CHOICE,
+  CHUNK_COUNT_LIMIT,
+  ENCODE_TO_BUFFER,
+}
+
+alias Mallocfn  = fn void*(usz size);
+alias Reallocfn = fn void*(void* ptr, usz size);
+alias Callocfn  = fn void* (usz count, usz size);
+alias Freefn    = fn void (void* ptr);
+
+struct Alloc {
+  Mallocfn  mallocfn;
+  Reallocfn reallocfn;
+  Callocfn  callocfn;
+  Freefn    freefn;
+}
+
+struct RowInfo {
+  uint scanlineIdx;
+  uint rowNum; // Deinterlaced row index
+  int pass;
+  char filter;
+}
+
+alias Ctx = void;
+
+alias Readfn  = fn int(Ctx* ctx, void* user, void* dest, usz length);
+alias Writefn = fn int(Ctx* ctx, void* user, void* src, usz length);
+
+alias RWfn    = fn int(Ctx* ctx, void* user, void* dst_src, usz length);
+
+extern fn Ctx* ctx_new(int flags) @extern("spng_ctx_new");
+extern fn Ctx* ctx_new2(Alloc* alloc, int flags) @extern("spng_ctx_new2");
+extern fn void ctx_free(Ctx* ctx) @extern("spng_ctx_free");
+
+extern fn int set_png_buffer(Ctx* ctx, void* buf, usz size) @extern("spng_set_png_buffer");
+extern fn int set_png_stream(Ctx* ctx, RWfn* rw_func, void* user) @extern("spng_set_png_stream");
+extern fn int set_png_file(Ctx* ctx, CFile* file) @extern("spng_set_png_file");
+
+extern fn void* get_png_buffer(Ctx* ctx, usz* len, int* error) @extern("spng_get_png_buffer");
+
+extern fn int set_image_limits(Ctx* ctx, uint width, uint height) @extern("spng_set_image_limits");
+extern fn int get_image_limits(Ctx* ctx, uint* width, uint* height) @extern("spng_get_image_limits");
+
+extern fn int set_chunk_limits(Ctx* ctx, usz chunk_size, usz cache_size) @extern("spng_set_chunk_limits");
+extern fn int get_chunk_limits(Ctx* ctx, usz* chunk_size, usz* cache_size) @extern("spng_get_chunk_limits");
+
+extern fn int set_crc_action(Ctx* ctx, int critical, int ancillary) @extern("spng_set_crc_action");
+
+extern fn int set_option(Ctx* ctx, Option option, int value) @extern("spng_set_option");
+extern fn int get_option(Ctx* ctx, Option option, int* value) @extern("spng_get_option");
+
+extern fn int decoded_image_size(Ctx* ctx, int fmt, usz* len) @extern("spng_decoded_image_size");
+
+// Decode
+extern fn int decode_image(Ctx* ctx, void* out, usz len, int fmt, int flags) @extern("spng_decode_image");
+
+// Progressive decode
+extern fn int decode_scanline(Ctx* ctx, void* out, usz len) @extern("spng_decode_scanline");
+extern fn int decode_row(Ctx* ctx, void* out, usz len) @extern("spng_decode_row");
+extern fn int decode_chunks(Ctx* ctx) @extern("spng_decode_chunks");
+
+// Encode/decode
+extern fn int get_row_info(Ctx* ctx, RowInfo* row_info) @extern("spng_get_row_info");
+
+// Encode
+extern fn int encode_image(Ctx* ctx, void* img, usz len, int fmt, int flags) @extern("spng_encode_image");
+
+// Progressive encode
+extern fn int encode_scanline(Ctx* ctx, void* scanline, usz len) @extern("spng_encode_scanline");
+extern fn int encode_row(Ctx* ctx, void* row, usz len) @extern("spng_encode_row");
+extern fn int encode_chunks(Ctx* ctx) @extern("spng_encode_chunks");
+
+extern fn int get_ihdr(Ctx* ctx, Ihdr* ihdr) @extern("spng_get_ihdr");
+extern fn int get_plte(Ctx* ctx, Plte* plte) @extern("spng_get_plte");
+extern fn int get_trns(Ctx* ctx, Trns* trns) @extern("spng_get_trns");
+extern fn int get_chrm(Ctx* ctx, Chrm* chrm) @extern("spng_get_chrm");
+extern fn int get_chrm_int(Ctx* ctx, ChrmInt* chrm_int) @extern("spng_get_chrm_int");
+extern fn int get_gama(Ctx* ctx, double* gamma) @extern("spng_get_gama");
+extern fn int get_gama_int(Ctx* ctx, uint* gama_int) @extern("spng_get_gama_int");
+extern fn int get_iccp(Ctx* ctx, Iccp* iccp) @extern("spng_get_iccp");
+extern fn int get_sbit(Ctx* ctx, Sbit* sbit) @extern("spng_get_sbit");
+extern fn int get_srgb(Ctx* ctx, char* rendering_intent) @extern("spng_get_srgb");
+extern fn int get_text(Ctx* ctx, Text* text, uint* n_text) @extern("spng_get_text");
+extern fn int get_bkgd(Ctx* ctx, Bkgd* bkgd) @extern("spng_get_bkgd");
+extern fn int get_hist(Ctx* ctx, Hist* hist) @extern("spng_get_hist");
+extern fn int get_phys(Ctx* ctx, Phys* phys) @extern("spng_get_phys");
+extern fn int get_splt(Ctx* ctx, Splt* splt, uint* n_splt) @extern("spng_get_split");
+extern fn int get_time(Ctx* ctx, Time* time) @extern("spng_get_time");
+extern fn int get_unknown_chunks(Ctx* ctx, UnknownChunk* chunks, uint* n_chunks) @extern("spng_get_unknown_chunks");
+
+// Official extensions
+extern fn int get_offs(Ctx* ctx, Offs* offs) @extern("spng_get_offs");
+extern fn int get_exif(Ctx* ctx, Exif* exif) @extern("spng_get_exif");
+
+
+extern fn int set_ihdr(Ctx* ctx, Ihdr* ihdr) @extern("spng_set_ihdr");
+extern fn int set_plte(Ctx* ctx, Plte* plte) @extern("spng_set_plte");
+extern fn int set_trns(Ctx* ctx, Trns* trns) @extern("spng_set_trns");
+extern fn int set_chrm(Ctx* ctx, Chrm* chrm) @extern("spng_set_chrm");
+extern fn int set_chrm_int(Ctx* ctx, ChrmInt* chrm_int) @extern("spng_set_chrm_int");
+extern fn int set_gama(Ctx* ctx, double gamma) @extern("spng_set_gama");
+extern fn int set_gama_int(Ctx* ctx, uint gamma) @extern("spng_set_gama_int");
+extern fn int set_iccp(Ctx* ctx, Iccp* iccp) @extern("spng_set_iccp");
+extern fn int set_sbit(Ctx* ctx, Sbit* sbit) @extern("spng_set_sbit");
+extern fn int set_srgb(Ctx* ctx, char rendering_intent) @extern("spng_set_srgb");
+extern fn int set_text(Ctx* ctx, Text* text, uint n_text) @extern("spng_set_text");
+extern fn int set_bkgd(Ctx* ctx, Bkgd* bkgd) @extern("spng_set_bkgd");
+extern fn int set_hist(Ctx* ctx, Hist* hist) @extern("spng_set_hist");
+extern fn int set_phys(Ctx* ctx, Phys* phys) @extern("spng_set_phys");
+extern fn int set_splt(Ctx* ctx, Splt* splt, uint n_splt) @extern("spng_set_splt");
+extern fn int set_time(Ctx* ctx, Time* time) @extern("spng_set_time");
+extern fn int set_unknown_chunks(Ctx* ctx, UnknownChunk* chunks, uint n_chunks) @extern("spng_set_unknown_chunks");
+
+// Official extensions
+extern fn int set_offs(Ctx* ctx, Offs* offs) @extern("spng_set_offs");
+extern fn int set_exif(Ctx* ctx, Exif* exif) @extern("spng_set_exif");
+
+
+extern fn char* strerror(int err) @extern("spng_strerror");
+extern fn char* version_string() @extern("spng_version_string");
