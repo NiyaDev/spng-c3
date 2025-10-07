@@ -448,5 +448,5 @@ extern fn int set_offs(Ctx* ctx, Offs* offs) @extern("spng_set_offs");
 extern fn int set_exif(Ctx* ctx, Exif* exif) @extern("spng_set_exif");
 
 
-extern fn char* strerror(int err) @extern("spng_strerror");
-extern fn char* version_string() @extern("spng_version_string");
+extern fn ZString strerror(int err) @extern("spng_strerror");
+extern fn ZString version_string() @extern("spng_version_string");
